@@ -1,0 +1,33 @@
+# Nome da sua automação
+name: Enviar Lançamentos por Telegram
+
+on:
+  schedule:
+    # Roda todos os dias às 12:00 UTC (09:00 no horário de Brasília)
+    - cron: '45 16 * * *'
+  # Permite rodar manualmente pela aba "Actions" para testar
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout do código
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Instalar dependências
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Rodar o script de notificação
+      env:
+        TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python notificador_lancamentos.py
