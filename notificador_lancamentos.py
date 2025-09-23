@@ -27,7 +27,10 @@ def send_telegram_message(message):
         return False
 
 def get_movie_releases(start_date, end_date):
-    """Busca lançamentos de filmes no TMDB em um intervalo de datas."""
+    """
+    Busca lançamentos de filmes no TMDB em um intervalo de datas,
+    com fallback para título em inglês e identificação do tipo de lançamento.
+    """
     url = f"https://api.themoviedb.org/3/discover/movie"
     params = {
         'api_key': TMDB_API_KEY,
@@ -38,10 +41,45 @@ def get_movie_releases(start_date, end_date):
         'sort_by': 'popularity.desc'
     }
     response = requests.get(url, params=params)
-    if response.status_code == 200:
-        movies = response.json().get('results', [])
-        return [f"- {movie['title']} ({movie['release_date']})" for movie in movies]
-    return []
+    if response.status_code != 200:
+        return []
+
+    movies = []
+    for movie in response.json().get('results', []):
+        movie_id = movie['id']
+        movie_title = movie.get('title')
+        release_date = movie['release_date']
+
+        # 1. Tratamento do Título (Fallback para inglês)
+        if not movie_title:
+            # Faz uma nova busca específica para o filme em inglês
+            eng_url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=en-US"
+            eng_response = requests.get(eng_url)
+            if eng_response.status_code == 200:
+                movie_title = eng_response.json().get('title', movie.get('original_title'))
+            else:
+                movie_title = movie.get('original_title') # Último recurso
+
+        # 2. Identificação do Tipo de Lançamento
+        release_type = "lançamento desconhecido"
+        releases_url = f"https://api.themoviedb.org/3/movie/{movie_id}/release_dates?api_key={TMDB_API_KEY}"
+        releases_response = requests.get(releases_url)
+
+        if releases_response.status_code == 200:
+            for country in releases_response.json().get('results', []):
+                if country['iso_3166_1'] == 'BR':
+                    for release in country.get('release_dates', []):
+                        # TMDB codes for release type:
+                        # 1: Cinema, 2: TV, 3: Home Video, 4: VOD/Streaming, 5: Mídia física, 6: Pré-lançamento
+                        if release['type'] in [1, 6]:
+                            release_type = "Cinema"
+                        elif release['type'] in [3, 4, 5]:
+                            release_type = "Streaming/Home"
+                    break # Já achou o Brasil, pode parar o loop
+
+        movies.append(f"- {movie_title} ({release_date}) - {release_type}")
+    
+    return movies
 
 def format_episode_ranges(episodes_by_season):
     """Formata os números de episódios em SXX EXX-YY."""
@@ -149,7 +187,7 @@ def main(time_period):
     movies = get_movie_releases(start_date_str, end_date_str)
     tv_shows = get_tv_show_episodes(start_date_str, end_date_str)
 
-    message = f"*{title} ({start_date_str})*\n\n"
+    message = f"*{title} ({end_date_str})*\n\n"
     
     if movies:
         message += "*🎬 Filmes Lançados*\n"
